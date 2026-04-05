@@ -69,3 +69,18 @@ def guard_test_result(test_result: dict):
         return False, "Test failed"
 
     return True, None
+
+# ----------------------
+# TEST FORMAT GUARDRAIL
+# ----------------------
+def guard_test_format(test: str):
+    forbidden = ["unittest", "pytest", "main()"]
+
+    for f in forbidden:
+        if f in test:
+            return False, f"Forbidden test pattern: {f}"
+
+    if "assert" not in test:
+        return False, "Test must contain assert"
+
+    return True, None
