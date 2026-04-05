@@ -50,12 +50,14 @@ def build_messages(prompt: str):
                 "- If code is one line, expand it into multiple lines\n"
                 "- Do NOT include explanations inside fixed_code\n"
                 "- Ensure the code is syntactically valid Python\n"
-                "- Return only the function (no print statements)\n"
+                "- Return only the function (no print statements)\n\n"
+
+                "Test Rules:\n"
                 "- Generate a minimal unit test using assert\n"
                 "- The test must validate the fix\n"
-                "- Do NOT include explanations inside test\n\n"
                 "- The test must FAIL if the fix is incorrect\n"
-                "- Ensure the test asserts failure if exception is not raised\n"
+                "- Ensure exception tests assert failure if exception is not raised\n"
+                "- Do NOT include explanations inside test\n\n"
 
                 "Example:\n"
                 "Input:\n"
@@ -64,7 +66,7 @@ def build_messages(prompt: str):
                 "{\n"
                 '  "bug": "Division by zero error",\n'
                 '  "fixed_code": "def f():\\n    raise ValueError(\\"invalid\\")",\n'
-                '  "test": "try:\\n    f()\\nexcept ValueError:\\n    assert True"\n'
+                '  "test": "try:\\n    f()\\n    assert False\\nexcept ValueError:\\n    assert True"\n'
                 "}\n"
             )
         },
@@ -108,6 +110,23 @@ def is_valid_response(data):
         and "def " in data["fixed_code"]
     )
 
+def run_test(fixed_code: str, test_code: str):
+    try:
+        # combine code + test
+        full_code = fixed_code + "\n\n" + test_code
+
+        # run in isolated scope
+        exec_globals = {}
+        exec(full_code, exec_globals)
+
+        return {"status": "PASS"}
+
+    except AssertionError:
+        return {"status": "FAIL", "error": "Assertion failed"}
+
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)}
+    
 def run_agent_pipeline(user_input: str):
     print("[LOG] Running agent pipeline...")
 
@@ -131,5 +150,9 @@ def run_agent_pipeline(user_input: str):
 
     if not is_valid_python(parsed["fixed_code"]):
         print("[LOG] Invalid code → retrying...")
+
+    test_result = run_test(parsed["fixed_code"], parsed["test"])
+
+    parsed["test_result"] = test_result
 
     return parsed
