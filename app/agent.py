@@ -1,27 +1,18 @@
 # app/agent.py
 
 import os
-import ast
 from openai import OpenAI
 from dotenv import load_dotenv
-import json
+from app.guardrails import (
+    guard_input,
+    guard_llm_output,
+    guard_structure,
+    guard_code_safety,
+    guard_test_result
+)
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-
-def validate_input(user_input: str):
-    blocked_keywords = ["hack", "exploit", "attack"]
-    for word in blocked_keywords:
-        if word in user_input.lower():
-            return False, f"Blocked keyword detected: {word}"
-    return True, None
-
-
-def validate_output(output: str):
-    if len(output) > 1500:
-        return False, "Output too long"
-    return True, None
 
 
 def build_messages(prompt: str):
@@ -95,21 +86,6 @@ def extract_fixed_code(response: str):
     return ""
 
 
-def is_valid_python(code: str):
-    try:
-        ast.parse(code)
-        return True
-    except Exception:
-        return False
-
-def is_valid_response(data):
-    return (
-        isinstance(data, dict)
-        and isinstance(data.get("bug"), str)
-        and isinstance(data.get("fixed_code"), str)
-        and "def " in data["fixed_code"]
-    )
-
 def run_test(fixed_code: str, test_code: str):
     try:
         # combine code + test
@@ -130,7 +106,7 @@ def run_test(fixed_code: str, test_code: str):
 def run_agent_pipeline(user_input: str):
     print("[LOG] Running agent pipeline...")
 
-    valid, error = validate_input(user_input)
+    valid, error = guard_input(user_input)
     if not valid:
         return {"error": error}
 
@@ -139,24 +115,26 @@ def run_agent_pipeline(user_input: str):
 
         response = generate_response(user_input)
 
-        try:
-            parsed = json.loads(response)
-        except Exception:
+        ok, parsed = guard_llm_output(response)
+        if not ok:
             print("[LOG] Invalid JSON → retrying...")
             continue
 
-        if not is_valid_response(parsed):
+        ok, error = guard_structure(parsed)
+        if not ok:
             print("[LOG] Invalid structure → retrying...")
             continue
 
-        if not is_valid_python(parsed["fixed_code"]):
-            print("[LOG] Invalid code → retrying...")
+        ok, error = guard_code_safety(parsed["fixed_code"])
+        if not ok:
+            print("[LOG] Unsafe code → retrying...")
             continue
 
         test_result = run_test(parsed["fixed_code"], parsed["test"])
         parsed["test_result"] = test_result
 
-        if test_result["status"] == "PASS":
+        ok, error = guard_test_result(test_result)
+        if ok:
             print("[LOG] Success")
             return parsed
 
