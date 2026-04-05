@@ -4,6 +4,7 @@ import os
 import ast
 from openai import OpenAI
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -29,16 +30,40 @@ def build_messages(prompt: str):
             "role": "system",
             "content": (
                 "You are an expert Python debugging assistant.\n"
-                "When given buggy code:\n"
-                "1. Identify the bug\n"
-                "2. Fix the root cause (not try/except)\n"
-                "3. Return in this format:\n\n"
-                "BUG:\n<short explanation>\n\n"
-                "FIX:\n<corrected code>\n\n"
-                "Do NOT use markdown or ``` blocks.\n"
+                "Return ONLY valid JSON (no text before/after).\n\n"
+
+                "Format:\n"
+                "{\n"
+                '  "bug": "<short explanation>",\n'
+                '  "fixed_code": "<corrected Python code>"\n'
+                "}\n\n"
+
+                "Rules:\n"
+                "- Fix the root cause (not try/except)\n"
+                "- Keep original behavior and function signature\n"
+                "- Do NOT change return types\n"
+                "- Prefer raising proper Python exceptions over returning error strings\n"
+                "- Replace incorrect logic instead of only adding code\n"
+                "- Return clean, runnable Python code\n"
+                "- Use proper formatting and indentation\n"
+                "- If code is one line, expand it into multiple lines\n"
+                "- Do NOT include explanations inside fixed_code\n"
+                "- Ensure the code is syntactically valid Python\n\n"
+
+                "Example:\n"
+                "Input:\n"
+                "def f(): return 1/0\n\n"
+                "Output:\n"
+                "{\n"
+                '  "bug": "Division by zero error",\n'
+                '  "fixed_code": "def f():\\n    raise ValueError(\\"invalid\\")"\n'
+                "}\n"
             )
         },
-        {"role": "user", "content": prompt}
+        {
+            "role": "user",
+            "content": prompt
+        }
     ]
 
 
@@ -67,23 +92,36 @@ def is_valid_python(code: str):
     except Exception:
         return False
 
+def is_valid_response(data):
+    return (
+        isinstance(data, dict)
+        and isinstance(data.get("bug"), str)
+        and isinstance(data.get("fixed_code"), str)
+        and "def " in data["fixed_code"]
+    )
 
 def run_agent_pipeline(user_input: str):
     print("[LOG] Running agent pipeline...")
 
     valid, error = validate_input(user_input)
     if not valid:
-        return f"[BLOCKED INPUT] {error}"
+        return {"error": error}
 
     response = generate_response(user_input)
 
-    code = extract_fixed_code(response)
-    if code and not is_valid_python(code):
+    try:
+        parsed = json.loads(response)
+    except Exception:
+        print("[LOG] Invalid JSON → retrying...")
+        response = generate_response(user_input + "\nReturn ONLY valid JSON.")
+        parsed = json.loads(response)
+
+    if not is_valid_response(parsed):
+        print("[LOG] Invalid structure → retrying...")
+        response = generate_response(user_input + "\nEnsure keys: bug, patch")
+        parsed = json.loads(response)
+
+    if not is_valid_python(parsed["fixed_code"]):
         print("[LOG] Invalid code → retrying...")
-        response = generate_response(user_input + "\nFix the code correctly.")
 
-    valid, error = validate_output(response)
-    if not valid:
-        return f"[BLOCKED OUTPUT] {error}"
-
-    return response
+    return parsed
