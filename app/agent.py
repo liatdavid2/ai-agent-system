@@ -5,6 +5,7 @@ from typing import TypedDict
 from openai import OpenAI
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
+from app.mcp import run_mcp_tools
 
 from app.guardrails import (
     guard_input,
@@ -14,6 +15,7 @@ from app.guardrails import (
     guard_test_result,
     guard_test_format   
 )
+from app.mcp import run_mcp_tools
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -138,10 +140,25 @@ def structure_node(state: AgentState):
 
 
 def code_node(state: AgentState):
-    ok, error = guard_code_safety(state["parsed"]["fixed_code"])
+    code = state["parsed"]["fixed_code"]
+
+    ok, error = guard_code_safety(code)
     if not ok:
         return {"error": error}
-    return {}
+
+    # MCP tools
+    mcp_results = run_mcp_tools(code)
+
+    # optional: fail if syntax invalid
+    if mcp_results["syntax"]["status"] != "valid":
+        return {
+            "test_result": {
+                "status": "FAIL",
+                "error": "Invalid syntax"
+            }
+        }
+
+    return {"mcp": mcp_results}
 
 
 def test_node(state: AgentState):
@@ -241,6 +258,16 @@ def run_agent_pipeline(user_input: str):
 
     if "parsed" in result:
         print("[LOG] Success")
-        return result["parsed"]
+
+        parsed = result["parsed"]
+
+        # -------------------------
+        # MCP validation
+        # -------------------------
+        if "fixed_code" in parsed:
+            mcp_result = run_mcp_tools(parsed["fixed_code"])
+            parsed["mcp"] = mcp_result
+
+        return parsed
 
     return {"error": result.get("error", "Failed after retries")}

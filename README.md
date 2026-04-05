@@ -18,7 +18,7 @@ POST /fix
 
 ```json
 {
-  "code": "def divide(a, b):\n    return a / b\n\nprint(divide(10, 0))"
+  "prompt": "def divide(a, b):\n    return a / b\n\nprint(divide(10, 0))"
 }
 ```
 
@@ -29,26 +29,23 @@ POST /fix
 ```json
 {
   "result": {
-    "bug": "Division by zero error",
+    "bug": "Division by zero",
     "fixed_code": "def divide(a, b):\n    if b == 0:\n        raise ValueError(\"Cannot divide by zero\")\n    return a / b",
     "test": "try:\n    divide(10, 0)\n    assert False\nexcept ValueError:\n    assert True",
     "test_result": {
       "status": "PASS"
+    },
+    "mcp": {
+      "syntax": {
+        "status": "valid"
+      },
+      "execution": {
+        "status": "success"
+      }
     }
   }
 }
 ```
-
----
-
-### 🔹 Response Fields
-
-| Field                | Type   | Description                  |
-| -------------------- | ------ | ---------------------------- |
-| `bug`                | string | Short explanation of the bug |
-| `fixed_code`         | string | Corrected Python code        |
-| `test`               | string | Generated unit test          |
-| `test_result.status` | string | `PASS` or `FAIL`             |
 
 ---
 
@@ -160,3 +157,117 @@ POST /fix
                 │
                 └─────── back to LLM Fix Agent
 ```
+---
+
+# AI Agent System
+
+Lightweight AI agent for detecting and fixing Python bugs with validation and MCP tools.
+
+---
+
+## Quick Start
+
+### 1. Create virtual environment
+
+```bash
+py -m venv .venv
+```
+
+### 2. Activate environment
+
+```bash
+.venv\Scripts\activate
+```
+
+### 3. Install dependencies
+
+CPU-only PyTorch:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+Project requirements:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+### 4. Run the API
+
+```bash
+uvicorn main:app --reload
+```
+
+API will be available at:
+
+```
+http://127.0.0.1:8000
+```
+
+Swagger UI:
+
+```
+http://127.0.0.1:8000/docs
+```
+
+---
+
+## MCP (Model Context Protocol)
+
+Simple MCP layer for validating and safely executing generated code.
+
+Location:
+
+```
+app/mcp.py
+```
+
+### Purpose
+
+Add guardrails after LLM generation:
+
+* Syntax validation
+* Safe execution
+* Controlled tool usage
+
+---
+
+### Available Tools
+
+#### 1. Syntax Check
+
+Validates Python code using AST parsing.
+
+#### 2. Safe Execution
+
+Runs code in isolated globals (basic sandbox).
+
+---
+
+### Usage
+
+```python
+from app.mcp import run_mcp_tools
+
+results = run_mcp_tools(fixed_code)
+```
+
+---
+
+### Example Output
+
+```json
+{
+  "syntax": {
+    "status": "valid"
+  },
+  "execution": {
+    "status": "success"
+  }
+}
+```
+---
+
