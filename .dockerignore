@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+.venv/
+venv/
+
+# Git
+.git/
+.gitignore
+
+# Data
+datasets/
+data/
+*.csv
+*.parquet
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+
+# Cache
+.cache/
