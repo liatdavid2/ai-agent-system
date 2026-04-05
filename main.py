@@ -1,17 +1,19 @@
 import os
+import ast
 from openai import OpenAI
 from dotenv import load_dotenv
 
-# Load environment variables
+# -----------------------------
+# Setup
+# -----------------------------
 load_dotenv()
-
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 # -----------------------------
 # Guardrails
 # -----------------------------
-def input_guard(user_input: str):
+def validate_input(user_input: str):
     blocked_keywords = ["hack", "exploit", "attack"]
 
     for word in blocked_keywords:
@@ -21,7 +23,7 @@ def input_guard(user_input: str):
     return True, None
 
 
-def output_guard(output: str):
+def validate_output(output: str):
     if len(output) > 1500:
         return False, "Output too long"
 
@@ -29,22 +31,35 @@ def output_guard(output: str):
 
 
 # -----------------------------
-# LLM Call
+# LLM Layer
 # -----------------------------
-def call_llm(prompt: str):
+def build_messages(prompt: str):
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert Python debugging assistant.\n"
+                "When given buggy code:\n"
+                "1. Identify the bug\n"
+                "2. Fix the root cause (not try/except)\n"
+                "3. Return in this format:\n\n"
+                "BUG:\n<short explanation>\n\n"
+                "FIX:\n<corrected code>\n\n"
+                "Do NOT use markdown or ``` blocks.\n"
+            )
+        },
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
+
+
+def generate_response(prompt: str):
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a helpful AI assistant. Answer clearly and concisely."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
+            messages=build_messages(prompt),
             max_tokens=300
         )
 
@@ -55,21 +70,45 @@ def call_llm(prompt: str):
 
 
 # -----------------------------
+# Post-processing
+# -----------------------------
+def extract_fixed_code(response: str):
+    if "FIX:" in response:
+        return response.split("FIX:")[-1].strip()
+    return ""
+
+
+def is_valid_python(code: str):
+    try:
+        ast.parse(code)
+        return True
+    except Exception:
+        return False
+
+
+# -----------------------------
 # Agent Pipeline
 # -----------------------------
-def run_agent(user_input: str):
+def run_agent_pipeline(user_input: str):
     print("[LOG] Running agent pipeline...")
 
-    # Step 1: Input Guard
-    valid, error = input_guard(user_input)
+    # Step 1: Input validation
+    valid, error = validate_input(user_input)
     if not valid:
-        return f"[BLOCKED] {error}"
+        return f"[BLOCKED INPUT] {error}"
 
-    # Step 2: Reasoning (LLM)
-    response = call_llm(user_input)
+    # Step 2: LLM reasoning
+    response = generate_response(user_input)
 
-    # Step 3: Output Guard
-    valid, error = output_guard(response)
+    # Step 3: Extract + validate code
+    code = extract_fixed_code(response)
+    if code:
+        if not is_valid_python(code):
+            print("[LOG] Invalid code detected → retrying...")
+            response = generate_response(user_input + "\nFix the code correctly.")
+
+    # Step 4: Output validation
+    valid, error = validate_output(response)
     if not valid:
         return f"[BLOCKED OUTPUT] {error}"
 
@@ -77,26 +116,32 @@ def run_agent(user_input: str):
 
 
 # -----------------------------
-# Main
+# CLI Input
 # -----------------------------
-def read_multiline():
+def read_multiline_input():
     print("Paste your input. Type 'END' on a new line to finish:\n")
+
     lines = []
     while True:
         line = input()
         if line.strip() == "END":
             break
         lines.append(line)
+
     return "\n".join(lines)
 
+
+# -----------------------------
+# Main
+# -----------------------------
 def main():
     print("=== AI Agent System ===")
 
-    user_input = read_multiline()
+    user_input = read_multiline_input()
 
     print("\n[DEBUG] Received input:\n", user_input)
 
-    result = run_agent(user_input)
+    result = run_agent_pipeline(user_input)
 
     print("\n=== Final Response ===")
     print(result)
