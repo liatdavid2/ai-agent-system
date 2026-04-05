@@ -1,3 +1,5 @@
 .env
 commands
 /.venv
+/__pycache__
+/app/__pycache__
