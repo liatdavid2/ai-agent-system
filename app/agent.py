@@ -134,25 +134,32 @@ def run_agent_pipeline(user_input: str):
     if not valid:
         return {"error": error}
 
-    response = generate_response(user_input)
+    for attempt in range(3):
+        print(f"[LOG] Attempt {attempt+1}")
 
-    try:
-        parsed = json.loads(response)
-    except Exception:
-        print("[LOG] Invalid JSON → retrying...")
-        response = generate_response(user_input + "\nReturn ONLY valid JSON.")
-        parsed = json.loads(response)
+        response = generate_response(user_input)
 
-    if not is_valid_response(parsed):
-        print("[LOG] Invalid structure → retrying...")
-        response = generate_response(user_input + "\nEnsure keys: bug, patch")
-        parsed = json.loads(response)
+        try:
+            parsed = json.loads(response)
+        except Exception:
+            print("[LOG] Invalid JSON → retrying...")
+            continue
 
-    if not is_valid_python(parsed["fixed_code"]):
-        print("[LOG] Invalid code → retrying...")
+        if not is_valid_response(parsed):
+            print("[LOG] Invalid structure → retrying...")
+            continue
 
-    test_result = run_test(parsed["fixed_code"], parsed["test"])
+        if not is_valid_python(parsed["fixed_code"]):
+            print("[LOG] Invalid code → retrying...")
+            continue
 
-    parsed["test_result"] = test_result
+        test_result = run_test(parsed["fixed_code"], parsed["test"])
+        parsed["test_result"] = test_result
 
-    return parsed
+        if test_result["status"] == "PASS":
+            print("[LOG] Success")
+            return parsed
+
+        print("[LOG] Test failed → retrying...")
+
+    return {"error": "Failed after retries"}
