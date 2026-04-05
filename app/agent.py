@@ -41,12 +41,40 @@ def build_messages(prompt: str):
             "content": (
                 "You are an expert Python debugging assistant.\n"
                 "Return ONLY valid JSON (no text before/after).\n\n"
+
                 "Format:\n"
                 "{\n"
                 '  "bug": "<short explanation>",\n'
                 '  "fixed_code": "<corrected Python code>",\n'
                 '  "test": "<unit test code>"\n'
                 "}\n\n"
+
+                "Rules:\n"
+                "- Fix the root cause (not try/except)\n"
+                "- Keep original behavior and function signature\n"
+                "- Do NOT change return types\n"
+                "- Return clean, runnable Python code\n"
+                "- Ensure valid Python syntax\n"
+                "- Return only the function (no print statements)\n\n"
+
+                "Test Rules:\n"
+                "- Use ONLY plain assert statements\n"
+                "- Do NOT use unittest\n"
+                "- Do NOT use pytest\n"
+                "- Do NOT define classes\n"
+                "- Do NOT call main()\n"
+                "- The test must run with exec()\n"
+                "- The test must FAIL if the fix is incorrect\n\n"
+
+                "Example:\n"
+                "Input:\n"
+                "def f(): return 1/0\n\n"
+                "Output:\n"
+                "{\n"
+                '  "bug": "Division by zero",\n'
+                '  "fixed_code": "def f():\\n    raise ValueError(\\"invalid\\")",\n'
+                '  "test": "try:\\n    f()\\n    assert False\\nexcept ValueError:\\n    assert True"\n'
+                "}\n"
             )
         },
         {"role": "user", "content": prompt}
