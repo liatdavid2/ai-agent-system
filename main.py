@@ -1,5 +1,3 @@
-# main.py
-
 from fastapi import FastAPI
 from pydantic import BaseModel
 from app.agent import run_agent_pipeline
